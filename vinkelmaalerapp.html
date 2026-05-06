@@ -23,6 +23,16 @@
   .control-label { color: rgba(255,255,255,0.8); font-size: 13px; white-space: nowrap; width: 110px; }
   .slider { flex: 1; accent-color: #fff; }
 
+  #capture-btn { position: absolute; right: 20px; bottom: 110px; width: 60px; height: 60px; border-radius: 50%; background: #fff; border: 4px solid rgba(255,255,255,0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; transition: transform 0.1s; }
+  #capture-btn:active { transform: scale(0.9); background: #ddd; }
+  #capture-btn svg { width: 28px; height: 28px; }
+
+  #preview-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.93); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; }
+  #preview-overlay.visible { display: flex; }
+  #preview-img { max-width: 100%; max-height: 65dvh; border-radius: 12px; object-fit: contain; }
+  #preview-label { color: rgba(255,255,255,0.9); font-size: 17px; text-align: center; line-height: 1.5; max-width: 300px; font-weight: 500; }
+  #discard-btn { background: rgba(255,255,255,0.12); color: #fff; border: 1.5px solid rgba(255,255,255,0.3); border-radius: 12px; padding: 13px 28px; font-size: 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
   #start-screen { position: absolute; inset: 0; background: rgba(0,0,0,0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 32px; text-align: center; }
   #start-screen h1 { color: #fff; font-size: 26px; font-weight: 700; }
   #start-screen p { color: rgba(255,255,255,0.65); font-size: 15px; line-height: 1.5; max-width: 280px; }
@@ -54,6 +64,19 @@
       <span class="control-label">Ben 2 – vinkel</span>
       <input type="range" class="slider" id="angle2-slider" min="-170" max="170" value="40" step="1">
     </div>
+  </div>
+
+  <button id="capture-btn" onclick="takePhoto()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+      <circle cx="12" cy="13" r="4"/>
+    </svg>
+  </button>
+
+  <div id="preview-overlay">
+    <img id="preview-img" src="" alt="Dit foto">
+    <p id="preview-label">Hold fingeren på billedet for at dele eller gemme</p>
+    <button id="discard-btn" onclick="closePreview()">Tilbage til Vinkelmåler</button>
   </div>
 
   <div id="start-screen">
@@ -253,6 +276,29 @@
     ctx.restore();
 
     animFrame = requestAnimationFrame(drawFrame);
+  }
+
+  function takePhoto() {
+    const shot = document.createElement('canvas');
+    shot.width = window.innerWidth * 2;
+    shot.height = window.innerHeight * 2;
+    const sctx = shot.getContext('2d');
+    const screenRatio = window.innerWidth / window.innerHeight;
+    const vw = video.videoWidth || window.innerWidth;
+    const vh = video.videoHeight || window.innerHeight;
+    const videoRatio = vw / vh;
+    let srcX = 0, srcY = 0, srcW = vw, srcH = vh;
+    if (videoRatio > screenRatio) { srcW = vh * screenRatio; srcX = (vw - srcW) / 2; }
+    else { srcH = vw / screenRatio; srcY = (vh - srcH) / 2; }
+    sctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, shot.width, shot.height);
+    // Tegn overlay fra canvas oven på billedet
+    sctx.drawImage(canvas, 0, 0, window.innerWidth, window.innerHeight, 0, 0, shot.width, shot.height);
+    document.getElementById('preview-img').src = shot.toDataURL('image/jpeg', 0.93);
+    document.getElementById('preview-overlay').classList.add('visible');
+  }
+
+  function closePreview() {
+    document.getElementById('preview-overlay').classList.remove('visible');
   }
 
   async function startCamera() {
