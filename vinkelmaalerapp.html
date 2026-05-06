@@ -189,7 +189,7 @@
     ctx.lineTo(x2, y2);
     ctx.stroke();
 
-    // Bue mellem vinkelbenene
+    // Bue mellem vinkelbenene (kun når det IKKE er en ret vinkel)
     const arcRadius = Math.min(w, h) * 0.13;
     let startAngle = a1;
     let endAngle = a2;
@@ -200,24 +200,25 @@
     while (da < -Math.PI) da += 2 * Math.PI;
     endAngle = startAngle + da;
 
-    ctx.beginPath();
-    ctx.arc(ax, ay, arcRadius, startAngle, endAngle, da < 0);
-    ctx.strokeStyle = lineColor;
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
+    if (angleDeg !== 90) {
+      ctx.beginPath();
+      ctx.arc(ax, ay, arcRadius, startAngle, endAngle, da < 0);
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
 
-    // Fyld buen let
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.arc(ax, ay, arcRadius, startAngle, endAngle, da < 0);
-    ctx.closePath();
-    ctx.fillStyle = arcColor;
-    ctx.fill();
+      // Fyld buen let
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.arc(ax, ay, arcRadius, startAngle, endAngle, da < 0);
+      ctx.closePath();
+      ctx.fillStyle = arcColor;
+      ctx.fill();
+    }
 
     // Ret vinkel – tegn lille kvadrat i stedet for bue
     if (angleDeg === 90) {
       const sqSize = arcRadius * 0.7;
-      const midAngle = (startAngle + endAngle) / 2;
       // Find de to enhedsvektorer langs benene
       const u1x = Math.cos(a1), u1y = Math.sin(a1);
       const u2x = Math.cos(a2), u2y = Math.sin(a2);
