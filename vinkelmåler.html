@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Vinkelmåler</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #000; font-family: -apple-system, sans-serif; height: 100dvh; overflow: hidden; }
+  #app { position: relative; width: 100%; height: 100dvh; overflow: hidden; }
+  #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  #ui-top { position: absolute; top: 0; left: 0; right: 0; padding: 20px; padding-top: max(env(safe-area-inset-top), 16px); background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent); display: flex; justify-content: space-between; align-items: flex-end; }
+  #title-label { color: #fff; font-size: 22px; font-weight: 600; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+  #angle-display { color: #fff; font-size: 48px; font-weight: 700; text-shadow: 0 2px 8px rgba(0,0,0,0.7); line-height: 1; text-align: right; }
+  #angle-unit { color: rgba(255,255,255,0.8); font-size: 22px; font-weight: 400; }
+
+  #hint { position: absolute; bottom: 130px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.7); font-size: 13px; pointer-events: none; }
+
+  #ui-bottom { position: absolute; bottom: 0; left: 0; right: 0; padding: 14px 20px max(env(safe-area-inset-bottom), 20px); background: linear-gradient(to top, rgba(0,0,0,0.75), transparent); display: flex; flex-direction: column; gap: 10px; }
+  .control-row { display: flex; align-items: center; gap: 10px; }
+  .control-label { color: rgba(255,255,255,0.8); font-size: 13px; white-space: nowrap; width: 110px; }
+  .slider { flex: 1; accent-color: #fff; }
+
+  #start-screen { position: absolute; inset: 0; background: rgba(0,0,0,0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 32px; text-align: center; }
+  #start-screen h1 { color: #fff; font-size: 26px; font-weight: 700; }
+  #start-screen p { color: rgba(255,255,255,0.65); font-size: 15px; line-height: 1.5; max-width: 280px; }
+  #start-btn { background: #fff; color: #000; border: none; border-radius: 14px; padding: 14px 36px; font-size: 17px; font-weight: 600; cursor: pointer; margin-top: 8px; -webkit-tap-highlight-color: transparent; }
+  #error-msg { color: #ff6b6b; font-size: 14px; display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+
+  <div id="ui-top">
+    <span id="title-label">Vinkelmåler</span>
+    <div>
+      <span id="angle-display">90</span>
+      <span id="angle-unit">°</span>
+    </div>
+  </div>
+
+  <p id="hint">Træk toppunktet · Drej vinkelbenene med skyderne</p>
+
+  <div id="ui-bottom">
+    <div class="control-row">
+      <span class="control-label">Ben 1 – vinkel</span>
+      <input type="range" class="slider" id="angle1-slider" min="-170" max="170" value="-40" step="1">
+    </div>
+    <div class="control-row">
+      <span class="control-label">Ben 2 – vinkel</span>
+      <input type="range" class="slider" id="angle2-slider" min="-170" max="170" value="40" step="1">
+    </div>
+  </div>
+
+  <div id="start-screen">
+    <h1>Vinkelmåler</h1>
+    <p>Placer toppunktet på en vinkel i virkeligheden og drej de to ben så de følger vinkelbenene. Appen beregner vinklen automatisk.</p>
+    <button id="start-btn" onclick="startCamera()">Start kamera</button>
+    <span id="error-msg">Kunne ikke åbne kamera. Tjek at du har givet tilladelse i indstillinger.</span>
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const video = document.getElementById('video');
+
+  // Toppunktets position (normaliseret 0-1)
+  let apexX = 0.5;
+  let apexY = 0.5;
+
+  // Vinkelbenenes vinkler i grader fra vandret
+  let angle1 = -40;
+  let angle2 = 40;
+
+  let dragging = false;
+  let animFrame;
+
+  // Skydere
+  document.getElementById('angle1-slider').addEventListener('input', e => {
+    angle1 = parseFloat(e.target.value);
+  });
+  document.getElementById('angle2-slider').addEventListener('input', e => {
+    angle2 = parseFloat(e.target.value);
+  });
+
+  // Træk toppunktet med finger
+  canvas.addEventListener('touchstart', e => {
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const tx = (touch.clientX - rect.left) / rect.width;
+    const ty = (touch.clientY - rect.top) / rect.height;
+    // Tjek om touch er tæt på toppunktet
+    const dist = Math.hypot(tx - apexX, (ty - apexY) * (rect.height / rect.width));
+    if (dist < 0.08) {
+      dragging = true;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    apexX = Math.max(0.05, Math.min(0.95, (touch.clientX - rect.left) / rect.width));
+    apexY = Math.max(0.1, Math.min(0.85, (touch.clientY - rect.top) / rect.height));
+    e.preventDefault();
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', () => { dragging = false; });
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  function drawFrame() {
+    resizeCanvas();
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Video crop
+    const screenRatio = w / h;
+    const vw = video.videoWidth || w;
+    const vh = video.videoHeight || h;
+    const videoRatio = vw / vh;
+    let srcX = 0, srcY = 0, srcW = vw, srcH = vh;
+    if (videoRatio > screenRatio) {
+      srcW = vh * screenRatio;
+      srcX = (vw - srcW) / 2;
+    } else {
+      srcH = vw / screenRatio;
+      srcY = (vh - srcH) / 2;
+    }
+    ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, w, h);
+
+    // Toppunkt i pixels
+    const ax = apexX * w;
+    const ay = apexY * h;
+
+    // Vinkelbenenes retninger
+    const a1 = angle1 * Math.PI / 180;
+    const a2 = angle2 * Math.PI / 180;
+    const armLen = Math.max(w, h) * 0.55;
+
+    const x1 = ax + Math.cos(a1) * armLen;
+    const y1 = ay + Math.sin(a1) * armLen;
+    const x2 = ax + Math.cos(a2) * armLen;
+    const y2 = ay + Math.sin(a2) * armLen;
+
+    // Beregn vinklen mellem de to ben
+    let angleDiff = Math.abs(angle2 - angle1);
+    if (angleDiff > 180) angleDiff = 360 - angleDiff;
+    const angleDeg = Math.round(angleDiff);
+
+    // Opdater display
+    document.getElementById('angle-display').textContent = angleDeg;
+
+    // Farve afhænger af vinkeltype
+    let lineColor, arcColor;
+    if (angleDeg === 90) {
+      lineColor = 'rgba(100, 220, 120, 0.95)';
+      arcColor = 'rgba(100, 220, 120, 0.5)';
+    } else if (angleDeg < 90) {
+      lineColor = 'rgba(100, 180, 255, 0.95)';
+      arcColor = 'rgba(100, 180, 255, 0.4)';
+    } else {
+      lineColor = 'rgba(255, 200, 80, 0.95)';
+      arcColor = 'rgba(255, 200, 80, 0.35)';
+    }
+
+    // Tegn vinkelben 1
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(x1, y1);
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
+    ctx.stroke();
+
+    // Tegn vinkelben 2
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    // Bue mellem vinkelbenene
+    const arcRadius = Math.min(w, h) * 0.13;
+    let startAngle = a1;
+    let endAngle = a2;
+
+    // Sørg for at buen går den korteste vej
+    let da = endAngle - startAngle;
+    while (da > Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    endAngle = startAngle + da;
+
+    ctx.beginPath();
+    ctx.arc(ax, ay, arcRadius, startAngle, endAngle, da < 0);
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Fyld buen let
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.arc(ax, ay, arcRadius, startAngle, endAngle, da < 0);
+    ctx.closePath();
+    ctx.fillStyle = arcColor;
+    ctx.fill();
+
+    // Ret vinkel – tegn lille kvadrat i stedet for bue
+    if (angleDeg === 90) {
+      const sqSize = arcRadius * 0.7;
+      const midAngle = (startAngle + endAngle) / 2;
+      // Find de to enhedsvektorer langs benene
+      const u1x = Math.cos(a1), u1y = Math.sin(a1);
+      const u2x = Math.cos(a2), u2y = Math.sin(a2);
+      ctx.beginPath();
+      ctx.moveTo(ax + u1x * sqSize, ay + u1y * sqSize);
+      ctx.lineTo(ax + u1x * sqSize + u2x * sqSize, ay + u1y * sqSize + u2y * sqSize);
+      ctx.lineTo(ax + u2x * sqSize, ay + u2y * sqSize);
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+
+    // Toppunkt – trækbar cirkel
+    ctx.beginPath();
+    ctx.arc(ax, ay, 14, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ax, ay, 14, 0, Math.PI * 2);
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Lille kryds i toppunktet
+    ctx.beginPath();
+    ctx.moveTo(ax - 6, ay); ctx.lineTo(ax + 6, ay);
+    ctx.moveTo(ax, ay - 6); ctx.lineTo(ax, ay + 6);
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.restore();
+
+    animFrame = requestAnimationFrame(drawFrame);
+  }
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+      video.srcObject = stream;
+      document.getElementById('start-screen').style.display = 'none';
+      drawFrame();
+    } catch (e) {
+      document.getElementById('error-msg').style.display = 'block';
+      document.getElementById('start-btn').textContent = 'Prøv igen';
+    }
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+</script>
+</body>
+</html>
